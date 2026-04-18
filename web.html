@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Water Map - ภาคใต้</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<style>
+body { margin:0; font-family:'Segoe UI'; }
+#map { height:100vh; }
+
+.panel {
+  position:absolute;
+  top:20px;
+  left:20px;
+  z-index:1000;
+  width:300px;
+  background:white;
+  padding:15px;
+  border-radius:12px;
+  box-shadow:0 6px 20px rgba(0,0,0,0.2);
+}
+
+h3 { margin:0 0 10px; }
+
+input {
+  width:100%;
+  padding:10px;
+  border-radius:8px;
+  border:1px solid #ccc;
+}
+
+.autocomplete-list {
+  position:absolute;
+  width:100%;
+  background:white;
+  border-radius:8px;
+  box-shadow:0 5px 15px rgba(0,0,0,0.2);
+  max-height:200px;
+  overflow:auto;
+}
+
+.autocomplete-item {
+  padding:8px;
+  cursor:pointer;
+}
+.autocomplete-item:hover { background:#eee; }
+
+.btn-group {
+  display:flex;
+  gap:5px;
+  margin-top:10px;
+}
+
+button {
+  flex:1;
+  padding:8px;
+  border:none;
+  border-radius:6px;
+  color:white;
+  cursor:pointer;
+}
+
+.safe { background:green; }
+.danger { background:red; }
+.delete { background:#555; }
+
+.leaflet-tooltip {
+  color:white;
+  font-weight:bold;
+  border:none;
+  border-radius:6px;
+  padding:4px 8px;
+}
+
+.label-safe { background:green; }
+.label-danger { background:red; }
+
+.status {
+  margin-top:8px;
+  font-size:13px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="panel">
+  <h3>🌴 แหล่งน้ำภาคใต้</h3>
+
+  <input id="search" placeholder="ค้นหาแหล่งน้ำ...">
+  <div id="autocomplete" class="autocomplete-list"></div>
+
+  <div class="btn-group">
+    <button onclick="createMarker('safe')" class="safe">✔ ปลอดภัย</button>
+    <button onclick="createMarker('danger')" class="danger">⚠ ไม่ปลอดภัย</button>
+    <button onclick="deleteMarker()" class="delete">ลบ</button>
+  </div>
+
+  <div class="status" id="status">กำลังโหลด...</div>
+</div>
+
+<div id="map"></div>
+
+<script>
+// 🗺️ MAP (zoom ภาคใต้)
+const map = L.map('map').setView([8.5, 99.5],7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+// 📦 DATA
+let waterData = [];
+let selected = null;
+let currentMarker = null;
+
+// 🔥 โหลดไฟล์ภาคใต้
+fetch("south_thailand_water_real.geojson")
+.then(res => res.json())
+.then(data => {
+  waterData = data.features.map(f => ({
+    name: f.properties.name + " " + f.properties.province,
+    lat: f.geometry.coordinates[1],
+    lng: f.geometry.coordinates[0]
+  }));
+
+  document.getElementById("status").innerText =
+    "โหลดแล้ว " + waterData.length + " จุด (GeoJSON)";
+});
+
+// 🔍 autocomplete
+const input = document.getElementById("search");
+const list = document.getElementById("autocomplete");
+
+input.oninput = ()=>{
+  const val = input.value.toLowerCase();
+  list.innerHTML = "";
+
+  if(!val) return;
+
+  const results = waterData
+    .filter(w => w.name.toLowerCase().includes(val))
+    .slice(0,10);
+
+  if(results.length === 0){
+    list.innerHTML = "<div class='autocomplete-item'>ไม่พบข้อมูล</div>";
+    return;
+  }
+
+  results.forEach(w=>{
+    const div = document.createElement("div");
+    div.className = "autocomplete-item";
+    div.textContent = w.name;
+
+    div.onclick = ()=>{
+      selected = w;
+      input.value = w.name;
+      list.innerHTML = "";
+      map.setView([w.lat, w.lng],9);
+    };
+
+    list.appendChild(div);
+  });
+};
+
+// 📍 icon
+function icon(status){
+  return L.icon({
+    iconUrl: status==="safe"
+      ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
+      : "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+    iconSize:[32,32]
+  });
+}
+
+// 📍 สร้างหมุด
+function createMarker(status){
+  if(!selected){
+    alert("เลือกแหล่งน้ำก่อน");
+    return;
+  }
+
+  if(currentMarker){
+    map.removeLayer(currentMarker);
+  }
+
+  currentMarker = L.marker([selected.lat, selected.lng], {
+    icon: icon(status)
+  }).addTo(map);
+
+  currentMarker.bindTooltip(
+    selected.name,
+    {
+      permanent:true,
+      className: status==="safe" ? "label-safe" : "label-danger"
+    }
+  );
+}
+
+// ❌ ลบหมุด
+function deleteMarker(){
+  if(currentMarker){
+    map.removeLayer(currentMarker);
+    currentMarker = null;
+  }
+}
+</script>
+
+</body>
+</html>
